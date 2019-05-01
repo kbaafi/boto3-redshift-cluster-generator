@@ -15,9 +15,7 @@ def saveConfig(config_file,section,option,value):
     
     if(config.has_section(section)==False):
         config.add_section(section)
-        add_option()
-    else:
-        add_option()
+    add_option()
     
     with open(config_file,"w") as f:
         config.write(f)
