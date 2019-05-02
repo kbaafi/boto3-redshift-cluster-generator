@@ -9,7 +9,7 @@ class RedshiftClusterGenerator():
         Instatiates a RedshiftClusterGenerator with the configurations from 
         a config file and access-to-S3 flag.
 
-        Parameters:
+        Args:
             config_file_addr    : str
                 address of the config file
             needsAccessToS3     : boolean
@@ -17,6 +17,7 @@ class RedshiftClusterGenerator():
         '''
         config = configparser.ConfigParser()
         config.read_file(open(configFileAddr))
+        self.configFile = configFileAddr
 
         try:
             self.key                    = config.get('AWS','KEY')
@@ -33,7 +34,7 @@ class RedshiftClusterGenerator():
             self.db['Password']         = config.get("DWH","DWH_DB_PASSWORD")
             self.db['Port']             = int(config.get("DWH","DWH_DB_PORT"))
             self.db['S3Role']           = config.get("DWH","DWH_IAM_ROLE_NAME")
-            self.awsClusterProps        = None
+            self.awsClusterProperties        = None
             self.outIP                  = config.get("LOCAL","OUT_IP")
 
             self.s3Client = aws.resource('s3',aws_access_key_id = self.key,
@@ -97,9 +98,9 @@ class RedshiftClusterGenerator():
         Creates a Redshift cluster using the properties of this class
 
         Parameters:
-            -
+            None
         Returns:
-            -
+            void
         '''
         
         try:
@@ -138,9 +139,15 @@ class RedshiftClusterGenerator():
             cluster_available_waiter.wait(ClusterIdentifier = self.db['ClusterID'])
             print("Cluster ready")
             
-            self.awsClusterProps = self.redshiftClient.describe_clusters(ClusterIdentifier=self.db['ClusterID'])['Clusters'][0]
-            if(self.awsClusterProps is not None):
+            self.awsClusterProperties = self.redshiftClient.describe_clusters(ClusterIdentifier=self.db['ClusterID'])['Clusters'][0]
+            if(self.awsClusterProperties is not None):
                 self.setupVPCConnectivity()
+                
+                self.dwHost       = self.awsClusterProperties['Endpoint']['Address']
+                self.dwRoleArn    = self.awsClusterProperties['IamRoles'][0]['IamRoleArn']
+
+                self.saveDBConfigurations("DWH","DWH_ENDPOINT",self.dwHost )
+                self.saveDBConfigurations("DWH","REDSHIFT_S3_IAM_ARN",self.dwRoleArn)
         except Exception as e:
             print(e)
             return
@@ -152,11 +159,13 @@ class RedshiftClusterGenerator():
         '''
         Allows access between the Redshift cluster and a specified ip address
         in the configuration file
+        
+        Returns: void
         '''
         try:
             print("Setting up your network access to the cluster.......")
             
-            vpc = self.ec2Client.Vpc(id=self.awsClusterProps['VpcId'])
+            vpc = self.ec2Client.Vpc(id=self.awsClusterProperties['VpcId'])
             defaultSecurityGroup = list(vpc.security_groups.all())[0]
             
             defaultSecurityGroup.authorize_ingress(
@@ -168,4 +177,39 @@ class RedshiftClusterGenerator():
             )
             print("Network settings complete")
         except Exception as e:
-            print(e)      
+            print(e) 
+
+
+    def saveDBConfigurations(self,section,option,value):
+        '''
+        Saves the endpoint address and Iam role arn into the config
+        file after the database has been created for later use
+
+        Args:
+            section: str
+                The section of the config file to which this data is to be saved
+            option: str
+                The option being saved to
+            value: str
+                The value of the option
+        Returns:
+            void
+        '''
+        config = configparser.ConfigParser()
+        config.read_file(open(self.configFile))
+
+        def add_option():
+            if config.has_option(section,option)==False:
+                config.set(section,option,value)
+            else:
+                print("An option with the same values exist. Please consider entering the values manually")
+                print("Enter these values into your config file:....")
+                print(("Section: {} ").format(section))
+                print(("Option: {}, Value: {} ").format(option,value))
+
+        if(config.has_section(section)==False):
+            config.add_section(section)
+        add_option()
+
+        with open(self.configFile,"w") as f:
+            config.write(f)     
