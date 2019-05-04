@@ -4,7 +4,7 @@ import json
 from botocore.exceptions import ClientError
 
 class RedshiftClusterGenerator():
-    def __init__(self,configFileAddr):
+    def __init__(self,configFileAddr,useExistingRole,useExistingVpcSettings):
         '''
         Instatiates a RedshiftClusterGenerator with the configurations from 
         a config file and access-to-S3 flag.
@@ -15,9 +15,17 @@ class RedshiftClusterGenerator():
             needsAccessToS3     : boolean
                 flag specifying whether to grant access to S3 to the Redshift Cluster
         '''
-        config = configparser.ConfigParser()
-        config.read_file(open(configFileAddr))
-        self.configFile = configFileAddr
+        try:
+            config = configparser.ConfigParser()
+            config.read_file(open(configFileAddr))
+            self.configFile = configFileAddr
+            self.configFileOK = True
+        except Exception as e:
+            print("\nCould not read the config file:")
+            print(e)
+            print("\n")
+            self.configFileOK = False
+            return
 
         try:
             self.key                    = config.get('AWS','KEY')
@@ -36,6 +44,8 @@ class RedshiftClusterGenerator():
             self.db['S3Role']           = config.get("DWH","DWH_IAM_ROLE_NAME")
             self.awsClusterProperties        = None
             self.outIP                  = config.get("LOCAL","OUT_IP")
+            self.useExistingS3Role      = useExistingRole
+            self.useExistingVpcSettings = useExistingVpcSettings
 
             self.s3Client = aws.resource('s3',aws_access_key_id = self.key,
                 aws_secret_access_key = self.secret)
@@ -68,29 +78,39 @@ class RedshiftClusterGenerator():
         
         '''
         print('Access to S3: Creating a new IAM Role')
-                
-        S3AccessRole = self.iamClient.create_role(
-            Path = '/',
-            RoleName = self.db['S3Role'],
-            Description = 'Allows Redshift clusters to access S3 buckets',
-            AssumeRolePolicyDocument = json.dumps({
-                'Statement': [{
-                    'Action': 'sts:AssumeRole',
-                    'Effect': 'Allow',
-                    'Principal': {
-                        'Service': 'redshift.amazonaws.com'
-                    }
-                }],
-                'Version': '2012-10-17'
-        }))
 
-        print('Access to S3: Attaching Policy')
-        self.iamClient.attach_role_policy(RoleName = self.db['S3Role'],
-                PolicyArn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
-                )['ResponseMetadata']['HTTPStatusCode']
-
-        roleArn = S3AccessRole['Role']['Arn']
+        roleArn = None
         
+        try:       
+            S3AccessRole = self.iamClient.create_role(
+                Path = '/',
+                RoleName = self.db['S3Role'],
+                Description = 'Allows Redshift clusters to access S3 buckets',
+                AssumeRolePolicyDocument = json.dumps({
+                    'Statement': [{
+                        'Action': 'sts:AssumeRole',
+                        'Effect': 'Allow',
+                        'Principal': {
+                            'Service': 'redshift.amazonaws.com'
+                        }
+                    }],
+                    'Version': '2012-10-17'
+            }))
+
+            print('Access to S3: Attaching Policy')
+            self.iamClient.attach_role_policy(RoleName = self.db['S3Role'],
+                    PolicyArn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+                    )['ResponseMetadata']['HTTPStatusCode']
+
+            roleArn = S3AccessRole['Role']['Arn']
+
+        except self.iamClient.exceptions.EntityAlreadyExistsException:
+            if(self.useExistingS3Role == True):
+                iamResource = aws.resource('iam',aws_access_key_id = self.key,
+                    aws_secret_access_key = self.secret,
+                    region_name = self.region )
+                S3AccessRole = iamResource.Role(self.db['S3Role'])
+                roleArn = S3AccessRole.arn
         return roleArn
 
     def generateRedshiftCluster(self):
@@ -147,7 +167,10 @@ class RedshiftClusterGenerator():
                 self.dwRoleArn    = self.awsClusterProperties['IamRoles'][0]['IamRoleArn']
 
                 self.saveDBConfigurations("DWH","DWH_ENDPOINT",self.dwHost )
-                self.saveDBConfigurations("DWH","REDSHIFT_S3_IAM_ARN",self.dwRoleArn)
+                self.saveDBConfigurations("DWH","DWH_S3_IAM_ARN",self.dwRoleArn)
+            else:
+                print("\nRedshift cluster was not created. Cannot proceed further")
+                print(".........................................................")
         except Exception as e:
             print(e)
             return
@@ -176,8 +199,12 @@ class RedshiftClusterGenerator():
                 ToPort=int(self.db["Port"])
             )
             print("Network settings complete")
+        except self.ec2Client.exceptions.InvalidPermission.Duplicate :
+            if(self.useExistingVpcSettings==False):
+                raise Exception("Alert: A duplicate network connection exists and you can use it to connect to your database")
         except Exception as e:
-            print(e) 
+            print(e)
+        return
 
 
     def saveDBConfigurations(self,section,option,value):

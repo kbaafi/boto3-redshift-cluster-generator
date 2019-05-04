@@ -1,6 +1,7 @@
 # Redshift Cluster Generator
 
-Generates a cluster on AWS Redshift(R) using settings in the cfg file. The endpoint and Iam Role Arn are written to the cfg file for future use.
+Generates a cluster on AWS Redshift(R) Cluster which has the rights to access S3 for ETL Tasks. 
+Using settings in the cfg file the cluster is spun up on AWS and the resulting  database endpoint and  Arn are written to the cfg file for future use.
 
 ## Dependencies
 
@@ -10,14 +11,5 @@ Generates a cluster on AWS Redshift(R) using settings in the cfg file. The endpo
 
 ## Usage
 
-- Update the ```redshift_gen.cfg``` config file to suit your needs
-- Run ```deploy_redshift_iac.py```
-
-## Known Issues
-
-Based on your settings some errors could prevent this script from completing. Such as:
-
-- Having another cluster identifier with the same name
-- Having another IAM role with the same name
-
-Having a previously set Vpc Ingress setting with the same name will generate an error but will not force the script to stop. In this case you will have to manage VPC settings manually
+- Update the ```.cfg``` config file to suit your needs
+- Run ```deploy_redshift_iac.py -c <config file> -r -v```. ```-r``` flag resolves the conflict where the role specified was already in AWS. If specified, the existing AWS role and Arn are used. ```-v``` flag resolve the conflict caused when the Vpc settings already exist. If specified, the connection to the database uses the already existing Vpc settings
