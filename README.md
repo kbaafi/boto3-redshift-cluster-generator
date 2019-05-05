@@ -12,4 +12,8 @@ Using settings in the cfg file the cluster is spun up on AWS and the resulting  
 ## Usage
 
 - Update the ```.cfg``` config file to suit your needs
-- Run ```deploy_redshift_iac.py -c <config file> -r -v```. ```-r``` flag resolves the conflict where the role specified was already in AWS. If specified, the existing AWS role and Arn are used. ```-v``` flag resolve the conflict caused when the Vpc settings already exist. If specified, the connection to the database uses the already existing Vpc settings
+- Run ```python deploy_redshift_iac.py -c <config file> -r -v```. 
+
+```-r``` flag resolves the conflict where the role specified was already in AWS. If specified, the existing AWS role and Arn are used. 
+
+```-v``` flag resolve the conflict caused when the Vpc settings already exist. If specified, the connection to the database uses the already existing Vpc settings
