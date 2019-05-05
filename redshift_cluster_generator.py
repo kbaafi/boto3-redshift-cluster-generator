@@ -31,7 +31,6 @@ class RedshiftClusterGenerator():
             self.key                    = config.get('AWS','KEY')
             self.secret                 = config.get('AWS','SECRET')
             self.region                 = config.get('AWS','REGION')
-            
             self.db                     = {}
             self.db['ClusterType']      = config.get("DWH","DWH_CLUSTER_TYPE")
             self.db['NumNodes']         = int(config.get("DWH","DWH_NUM_NODES"))
@@ -106,11 +105,8 @@ class RedshiftClusterGenerator():
 
         except self.iamClient.exceptions.EntityAlreadyExistsException:
             if(self.useExistingS3Role == True):
-                iamResource = aws.resource('iam',aws_access_key_id = self.key,
-                    aws_secret_access_key = self.secret,
-                    region_name = self.region )
-                S3AccessRole = iamResource.Role(self.db['S3Role'])
-                roleArn = S3AccessRole.arn
+                S3AccessRole = self.iamClient.get_role(RoleName = self.db["S3Role"])
+                roleArn = S3AccessRole['Role']['Arn']
         return roleArn
 
     def generateRedshiftCluster(self):
@@ -199,9 +195,11 @@ class RedshiftClusterGenerator():
                 ToPort=int(self.db["Port"])
             )
             print("Network settings complete")
-        except self.ec2Client.exceptions.InvalidPermission.Duplicate :
-            if(self.useExistingVpcSettings==False):
-                raise Exception("Alert: A duplicate network connection exists and you can use it to connect to your database")
+        except ClientError as error :
+            if 'InvalidPermission.Duplicate' in str(error):
+                if(self.useExistingVpcSettings==False):
+                    raise Exception("Alert: A duplicate network connection exists and\
+                         you can use it to connect to your database")
         except Exception as e:
             print(e)
         return
