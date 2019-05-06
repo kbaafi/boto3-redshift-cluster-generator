@@ -125,8 +125,7 @@ class RedshiftClusterGenerator():
             print("Creating the access role for Redshift")
             S3ReadOnlyArn = self.createS3AccessRole()
         except ClientError as e:
-            if e.response['Error']['Code'] == 'EntityAlreadyExists':
-                print("Redshift access role already exists. Aborting...........")
+            print(e)
             return
 
         print("Initiating request to AWS for Redshift Cluster")
